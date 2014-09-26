@@ -1,0 +1,1580 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>BDD Scenario Generator</title>
+    <!--  (c) 2014 Rally Software Development Corp.  All Rights Reserved. -->
+    <!--  Build Date: Fri Sep 26 2014 10:49:53 GMT-0600 (MDT) -->
+    
+    <script type="text/javascript">
+        var APP_BUILD_DATE = "Fri Sep 26 2014 10:49:53 GMT-0600 (MDT)";
+        var CHECKSUM = 56423903330;
+    </script>
+    
+    <script type="text/javascript" src="/apps/2.0rc3/sdk.js"></script>
+
+    <script type="text/javascript">
+        Rally.onReady(function() {
+             
+    Ext.override(Rally.data.wsapi.collection.Store, {
+        load: function(options) {
+            if(this.cacheResults && this._hasLoaded) {
+                return this._loadCachedResults(options);
+            } else {
+                return this.callParent(arguments);
+            }
+        },
+
+        /**
+         * @private
+         */
+        _loadCachedResults: function(options) {
+            options = options || {};
+            if (Ext.isFunction(options)) {
+                options = {
+                    callback: options
+                };
+            }
+
+            var deferred = new Deft.Deferred(),
+                operation = Ext.create('Ext.data.Operation', options),
+                records = this.getRange(),
+                successful = true;
+
+            if (this.fireEvent('beforeload', this, operation) !== false) {
+                Ext.callback(options.callback, options.scope, [records, operation, successful]);
+                deferred.resolve(records, operation, successful);
+
+                if (this.hasListeners.load) {
+                    this.fireEvent('load', this, records, successful);
+                }
+
+            } else {
+                deferred.reject('beforeload returned false');
+            }
+
+            return deferred.promise;
+        },
+
+        /**
+         * Adds Model instance to the Store. This operation will not create new objects,
+         * it will add them to the appropriate collection on the parent object. This method
+         * accepts either:
+         *
+         * - An array of Model instances, ref Strings, or objects with _ref properties.
+         * - Any number of Model instances, ref Strings, or objects with _ref properties
+         *
+         * Sample usage:
+         *
+         *     var taskStore = defect.getCollection('Tasks');
+         *     taskStore.add('/task/123', {_ref: '/task/456'}, taskRecord);
+         *
+         * @param {Rally.data.Model[]/Rally.data.Model.../String[]/String.../Object[]/Object...} models An array
+         * of Model instances, ref Strings, or objects with _ref properties or a variable
+         * number of Model instances, ref Strings, or objects with _ref properties
+         * @return {Rally.domain.WsapiModel[]} array of added records
+         */
+        add: function() {
+            var records = this.self.toRecordsForAdd(this, arguments);
+            console.log('add to collection store',records, arguments);
+            return this.callParent(records);
+        },
+
+        /**
+         * Removes Model instances from the Store. This method accepts:
+         *
+         * - An array of Model instances, ref Strings, or objects with _ref properties
+         *
+         * Sample usage:
+         *
+         *     var taskStore = defect.getCollection('Tasks');
+         *     taskStore.remove(['/task/123', {_ref: '/task/456'}, taskRecord]);
+         *
+         * @param {Rally.data.Model[]/String[]/Object[]} records An array
+         * of Model instances, ref Strings, or objects with _ref properties
+         */
+        remove: function(records) {
+            this.callParent([this.self.toRecordsForRemove(this, records)]);
+        },
+
+        /**
+         * @inheritdoc
+         */
+        getCount: function() {
+            if (this._hasLoaded || !this.initialCount) {
+                return this.callParent(arguments);
+            } else {
+                return this.initialCount;
+            }
+        },
+
+        /**
+         * @inheritdoc
+         */
+        getTotalCount: function() {
+            if (this._hasLoaded || !this.initialCount) {
+                return this.callParent(arguments);
+            } else {
+                return this.initialCount;
+            }
+        },
+
+        inheritableStatics: {
+            /**
+             * @private
+             */
+            toRecordsForAdd: function(store, originalArgs) {
+                var records = this._makeArray.apply(this, originalArgs);
+
+                return _.map(records, function(record) {
+                    if (_.isString(record)) {
+                        record = new store.model({ _ref: record });
+                    }
+                    if (record.hasOwnProperty('_ref')) {
+                        record = new store.model({ _ref: record._ref });
+                    }
+                    record.phantom = true;
+                    record.validations = [];
+                    return record;
+                });
+            },
+
+            /**
+             * @private
+             */
+            toRecordsForRemove: function(store, originalArgs) {
+                var records = Ext.Array.from(originalArgs);
+
+                return _.map(records, function(record) {
+                    if(_.isString(record)) {
+                        return store.findRecord('_ref', new RegExp('^' + record + '$'));
+                    }
+                    if(record.hasOwnProperty('_ref')) {
+                        return store.findRecord('_ref', new RegExp('^' + record._ref + '$'));
+                    }
+                    return store.findRecord('_ref', new RegExp('^' + record.getRef().getRelativeUri() + '$'));
+                });
+            },
+
+            _makeArray: function(records) {
+                if (_.isArray(records)) {
+                    return records.slice(0);
+                }
+                return _.toArray(arguments);
+            },
+            getNewRecords: function() {
+                console.log('getNewRecords', this.snapshot, this.data, this.filterNew,(this.snapshot || this.data).filterBy(this.filterNew).items)
+                return (this.snapshot || this.data).filterBy(this.filterNew).items;
+            },
+            getUpdatedRecords: function() {
+                console.log('getUpdatedRecords', this.snapshot, this.data, this.filterUpdated,(this.snapshot || this.data).filterBy(this.filterUpdated).items)
+                return (this.snapshot || this.data).filterBy(this.filterUpdated).items;
+            },
+            sync: function(options) {
+                console.log('sync',options);
+                options = options || {};
+                var deferred = Ext.create('Deft.Deferred'),
+                    me = this,
+                    opts = Ext.apply({}, {
+                        callback: function(batch, syncOptions) {
+                            Ext.callback(options.callback, options.scope || me, [batch, syncOptions]);
+                            if (!batch.hasException) {
+                                deferred.resolve(batch);
+                            } else {
+                                deferred.reject(batch);
+                            }
+                        }
+                    }, options);
+
+                console.log('sync before call parent',opts);
+
+                this.callParent([opts]);
+                console.log('sync after call parent',opts);
+
+                return deferred.promise;
+            },
+        }
+    });
+
+(function () {
+    var Ext = window.Ext4 || window.Ext;
+
+    Ext.define('Rally.technicalservices.FieldBucket', {
+        extend: 'Ext.Container',
+        alias: 'widget.rallytsfieldbucket',
+        requires: [
+            'Rally.ui.detail.DetailHelper',
+            'Rally.ui.detail.FieldsetContainer',
+            'Rally.ui.detail.ResizableColumnTable'
+        ],
+
+        cls: 'fieldBucket',
+
+        expandIconCls: 'icon-chevron-right',
+        collapseIconCls: 'icon-chevron-down',
+
+        config: {
+            /**
+             * @cfg {String}
+             * The label to give the bucket
+             */
+            label: 'Scenario',
+
+            /**
+             * @cfg {Array}
+             * A list of fields to display in this bucket. If this config is provided, #filterFn is ignored.
+             * Field bucket respects the order of the fields in this list.
+             */
+            fields: ['Name','Description'],
+
+            /**
+             * @cfg {Function}
+             * Given a field, return true to include the field in this bucket.
+             * Use this config or the #fields config to determine which fields to show in this bucket.
+             */
+            filterFn: Ext.emptyFn,
+
+            /**
+             * @cfg {Rally.domain.WsapiModel} record (required)
+             * record to look for fields on
+             */
+            record: undefined,
+
+            /**
+             * @cfg {Boolean}
+             * whether to show the fields in columns (that increase to fill screen size)
+             * or to show them in a single column.
+             */
+            showInColumns: true,
+
+            /**
+             * @cfg {Boolean} growToFillSpace true to have each field take the full available width.
+             * showInColumns config option is forced to true.
+             */
+            growToFillSpace: false,
+
+            /**
+             * @cfg {Boolean} showFieldLabels true to show labels next to fields. Might want it to be false if
+             * the bucket only has one field, just set the label of the bucket to the field name instead.
+             */
+            showFieldLabels: true,
+
+            /**
+             * @cfg {Array} excludedFields list of fields that have already been displayed elsewhere.
+             * To be excluded from the list of available fields this bucket can display
+             */
+            excludedFields: [],
+
+            /**
+             * @cfg {Boolean}
+             * Start the bucket as collapse or not.
+             */
+            collapse: false,
+
+            nextBucket: null
+        },
+        initComponent: function () {
+            this.callParent(arguments);
+            this.drawHeader();
+            this.drawFields();
+            if (this.shouldDisplay()) {
+                this._markRequiredIfNecessary();
+            }
+            this.on('tabbed', this.tabToNextField, this);
+        },
+        tabToNextField: function () {
+            var fields = this.query('rallydetailfieldcontaineredpcomplete');
+            var currentField = _.find(fields, function (field) {
+                return field.focused;
+            });
+
+            if (!currentField) {
+                var firstEditableField = this._findNextEditableField(fields);
+                if (firstEditableField) {
+                    firstEditableField.focusField();
+                }
+                else {
+               //     this.tabToNextBucket();
+                }
+            }
+            else {
+                var nextField = this._findNextEditableField(fields, currentField);
+                currentField.unfocusField();
+                if (nextField) {
+                    nextField.focusField();
+                }
+                else {
+                 //   this.tabToNextBucket();
+                }
+            }
+        },
+        _findNextEditableField: function (fields, currentField) {
+            var currentIndex = currentField ? _.indexOf(fields, currentField) : -1;
+            return _.find(fields.slice(currentIndex + 1), function (field) {
+                return field._isFieldEditable();
+            });
+        },
+//        tabToNextBucket: function () {
+//            this.nextBucket.focusBucket();
+//        },
+        drawHeader: function () {
+            this.header = this.add({
+                xtype: 'component',
+                renderTpl: '<div class="section-header"><div tabindex="0" class="control {collapsedCls}"></div>' +
+                    '<div class="head">{label}</div></div>',
+                renderData: {
+                    label: this.getLabel(),
+                    collapsedCls: this.getCollapse() ? this.expandIconCls : this.collapseIconCls
+                },
+                renderSelectors: {
+                    header: '.section-header',
+                    control: '.control'
+                },
+                listeners: {
+                    click: {
+                        element: 'header',
+                        fn: this.toggleCollapse,
+                        stopEvent: true
+                    },
+                    blur: {
+                        element: 'control',
+                        fn: this._collapseBlurred
+                    },
+                    focus: {
+                        element: 'control',
+                        fn: this._collapseFocused
+                    },
+                    keydown: {
+                        element: 'control',
+                        fn: this._keyDownOnControl
+                    },
+                    scope: this
+                }
+            });
+        },
+        drawFields: function () {
+            Ext.suspendLayouts();
+
+            if (this.getGrowToFillSpace()) {
+                this.setShowInColumns(false);
+            }
+
+            this.detailFields = this.add({xtype: 'container', hidden: true});
+            var fields = this.getFilteredFields();
+            if (fields.length === 0) {
+                Ext.resumeLayouts(true);
+                return;
+            }
+            var fieldGroups = this._groupFields(fields);
+            Ext.each(fieldGroups, function (fieldGroup) {
+                var showInColumns = this.getShowInColumns();
+                if (this._isFieldRichText(fieldGroup[0])) {
+                    showInColumns = false;
+                }
+
+                var table = this._buildTableFrame(showInColumns);
+                Ext.each(fieldGroup, function (field) {
+                    table.add(this._getFieldComponent(field));
+                }, this);
+
+                this.detailFields.add(table);
+            }, this);
+
+            if (!this.getCollapse()) {
+                this.detailFields.show();
+            }
+
+            Ext.resumeLayouts(true);
+        },
+        _groupFields: function(fields){
+            var fieldGroups = [
+                []
+            ];
+            Ext.each(fields, function (field, index) {
+                if (this._isFieldRichText(field)) {
+                    //if we have any fields in the latest group, start a new group
+                    if (fieldGroups[fieldGroups.length - 1].length !== 0) {
+                        fieldGroups.push([]);
+                    }
+                    //put the rich text field into the group, it will be the only one in this group
+                    fieldGroups[fieldGroups.length - 1].push(field);
+                    //create a new group for the next field (any type) to start in
+                    if (index !== fields.length - 1) {
+                        fieldGroups.push([]);
+                    }
+                } else {
+                    //normal fields go into the latest group
+                    fieldGroups[fieldGroups.length - 1].push(field);
+                }
+            }, this);
+            return fieldGroups;
+        },
+        _markRequiredIfNecessary: function () {
+            if (this.getFields() && this._shouldMarkRequired()) {
+                this.addClass('requiredfieldbucket');
+            }
+        },
+        _shouldMarkRequired: function () {
+            var record = this.getRecord();
+            return this.getGrowToFillSpace() && Rally.ui.detail.DetailHelper.isFieldRequired(record.getField(this.getFields()[0]), record);
+        },
+        _isFieldRichText: function (field) {
+            return field.attributeDefinition && field.attributeDefinition.AttributeType === 'TEXT';
+        },
+        _buildTableFrame: function (showInColumns) {
+            var columnTable = Ext.create('Rally.ui.detail.ResizableColumnTable', {
+                cls: 'detailFields',
+                showInColumns: showInColumns,
+                layout: {
+                    type: 'table',
+                    columns: 1,
+                    tableAttrs: {
+                        style: showInColumns ? {} : {width: '100%'}
+                    }
+                },
+                defaults: {
+                    cellCls: showInColumns ? 'detailField fixedWidth' : 'detailField'
+                },
+                containerWidthFn: Ext.bind(this.getWidth, this)
+            });
+            if (!showInColumns) {
+                columnTable.addCls('notInColumn');
+            }
+            return columnTable;
+        },
+        getRecordFields: function () {
+            if (this.getFields()) {
+                return this._getFieldsByConfig();
+            } else {
+                return this._getFieldsByFilterFn();
+            }
+        },
+        _getFieldsByConfig: function () {
+            var record = this.getRecord();
+            console.log('r',record);
+            var filteredFields = [];
+            _.forEach(this.getFields(), function (fieldName) {
+                var field = record.getField(fieldName);
+                if (field) {
+                    filteredFields.push(field);
+                }
+            });
+            return filteredFields;
+        },
+        _getFieldsByFilterFn: function () {
+            var allFields = this.getRecord().self.getFields();
+            var filteredFields = _.filter(allFields, this.getFilterFn());
+            var sortedFields = _.sortBy(filteredFields, this._sortFn);
+            return sortedFields;
+        },
+        _sortFn: function (field) {
+            // Some customers use the Name of the custom field to control the ordering in editor.
+            // For example, a custom field named "0_Foo" with a display name of "Foo" should appear before a field
+            // named "1_Bar" with a display name of "Bar".  The problem is that the field name in the record will be
+            // "c_Foo" and "c_Bar" respectively.
+            //
+            // The "name" configured when creating the field only appears in the attribute definition.  So, we use
+            // that for sorting if possible.
+            var attrDef = field.attributeDefinition;
+            if (attrDef && attrDef._refObjectName) {
+                return attrDef._refObjectName;
+            } else {
+                return field.name;
+            }
+        },
+        getFilteredFields: function () {
+            var recordFields = this.getRecordFields();
+            var excludedFields = this.getExcludedFields();
+            var availableFields = _.filter(recordFields, function (field) {
+                return !_.contains(excludedFields, field.name);
+            }, this);
+            var nonPortfolioItemFields = _.filter(availableFields, function (field) {
+                var allowedValueType = field.attributeDefinition && field.attributeDefinition.AllowedValueType;
+                if (allowedValueType) {
+                    var ref = allowedValueType._refObjectName;
+                    if (ref.split('/')[0] === 'PortfolioItem') {
+                        return false;
+                    }
+                }
+                return true;
+            });
+
+            var visibleFields = _.filter(nonPortfolioItemFields, function (field) {
+                return !field.hidden;
+            });
+
+            return visibleFields;
+        },
+        shouldDisplay: function () {
+            return this.getFilteredFields().length > 0 || Ext.isDefined(this.config.xtype);
+        },
+        _getFieldComponent: function (field) {
+            return Ext.create('Rally.ui.detail.FieldsetContainer', {
+                record: this.getRecord(),
+                field: field,
+                showLabel: this.getShowFieldLabels(),
+                clickToEdit: true
+            });
+        },
+        getCollapseToggleButton: function () {
+            return this.getEl().down('.control');
+        },
+        toggleCollapse: function () {
+            this._changeToggleViewState(function () {
+                if (this.getCollapse()) {
+                    this.detailFields.show();
+                } else {
+                    this.detailFields.hide();
+                }
+
+                this.setCollapse(!this.getCollapse());
+                this.getCollapseToggleButton().focus();
+            }, this);
+        },
+        _changeToggleViewState: function (callbackWhenViewChanged) {
+            if (this.getCollapse()) {
+                this.getCollapseToggleButton().removeCls(this.expandIconCls).addCls(this.collapseIconCls);
+            } else {
+                this.getCollapseToggleButton().removeCls(this.collapseIconCls).addCls(this.expandIconCls);
+            }
+            Ext.defer(callbackWhenViewChanged, 1, this);
+        },
+        _keyDownOnControl: function (e) {
+            if (e.keyCode === Ext.EventObject.ENTER || e.keyCode === Ext.EventObject.SPACE) {
+                this.toggleCollapse();
+            }
+        },
+        focusBucket: function () {
+            this._focusCollapseLink();
+        },
+        _collapseFocused: function () {
+            this.getCollapseToggleButton().addCls('focused');
+        },
+        _collapseBlurred: function () {
+            this.getCollapseToggleButton().removeCls('focused');
+        },
+        _focusCollapseLink: function () {
+            this.getCollapseToggleButton().focus();
+        }
+    });
+})();
+
+
+
+
+
+
+/*
+ * Rally.ui.detail.DetailHelper
+ * 
+ */ 
+(function () {
+    var Ext = window.Ext4 || window.Ext;
+
+    /**
+     * @private
+     */
+    Ext.define('Rally.ui.detail.DetailHelper', {
+        alias: 'widget.rallydetailhelper',
+        singleton: true,
+        requires: [
+            'Rally.data.ModelFactory'
+        ],
+
+        projectScopeChanged: function (record) {
+            var recordProject = record.get('Project');
+            if (recordProject && recordProject._ref) {
+                var modelContext = record.self.context;
+                return !modelContext || modelContext.project !== recordProject._ref;
+            }
+            return false;
+        },
+
+        // If record now has a project different from the context that the model used, get a new model and redraw
+        // based on that so that scoped attributes (such as whether custom fields are hidden) will be correct.
+        syncModelProject: function (record, onSuccess, scope) {
+            var recordProject = record.get('Project');
+            //noinspection JSValidateTypes
+            Rally.data.ModelFactory.getModel({
+                context: {
+                    project: recordProject._ref
+                },
+                type: record.self.typeName,
+                success: function (model) {
+                    record.self = model;
+                    onSuccess.call(this, record);
+                },
+                scope: scope
+            });
+        },
+
+        updateRecord: function (record, field) {
+            if (!this._isChangeValid(record, field)) {
+                return;
+            }
+            _.forIn(field.getSubmitData(), function (value, key) {
+                if(field.getXType() === 'rallydatefield') {
+                    this._setDateIfChanged(record, field, key, value);
+                }
+                else {
+                    record.set(key, value);
+                }
+            }, this);
+        },
+        _setDateIfChanged: function (record, field, key, value) {
+            var datesAreEqualIgnoringTimezone = Ext.Date.format(record.get(key), field.format) === value;
+            if(!datesAreEqualIgnoringTimezone) {
+                var dateWithoutUserTimezoneAdjustment = Ext.Date.parse(value, field.format);
+                record.set(key, dateWithoutUserTimezoneAdjustment);
+            }
+        },
+        _isChangeValid: function (record, field) {
+            if (field.store && field.store.isLoading()) {
+                return false;
+            }
+            if (!this.isFieldEditable(field, record)) {
+                return false;
+            }
+            if (_.isFunction(field.isValid) && !field.isValid()) {
+                return false;
+            }
+            if (this.isFieldEmpty(field) && this.isFieldRequired(record.getField(field.getName()), record)) {
+                return false;
+            }
+            if (_.isFunction(field.clean) && field.clean(record.get(field.getName())) === field.getValue()) {
+                return false;
+            }
+            return true;
+        },
+
+        isFieldEmpty: function (field) {
+            if (_.isFunction(field.isEmpty)) {
+                return field.isEmpty();
+            }
+            return Ext.isEmpty(field.getValue());
+        },
+
+        getCountOfEmptyRequiredFieldEditors: function (record) {
+            return Ext.dom.Query.select(".requiredField.empty").length;
+        },
+
+        getCountOfUnsetRequiredFields: function (record) {
+            var count = 0;
+            _.forEach(record.self.getFields(), function (field) {
+                if (this.isUnsetRequiredField(field, record)) {
+                    count++;
+                }
+            }, this);
+            return count;
+        },
+        isUnsetRequiredField: function (field, record) {
+            var fieldRequired = this.isFieldRequired(field, record);
+            var fieldIsUnset = this.isUnsetField(record, field);
+            var hasDefaultValue = this.isFieldWithDefaultValue(field);
+            return fieldRequired && fieldIsUnset && !hasDefaultValue;
+        },
+
+        isUnsetField: function (record, field) {
+            return record.get(field.name) === "";
+        },
+
+        isFieldWithDefaultValue: function (field) {
+            return field.editor && _.contains(["rallycombobox", "rallyfieldvaluecombobox"], field.editor.xtype);
+        },
+
+        isFieldRequired: function (field, record) {
+            return this.isFieldEditable(field, record) && field.required;
+        },
+
+        isFieldEditable: function (field, record) {
+            return !field.readOnly && (record.get('updatable') || record.phantom) && !this._isPlanEstimateFieldOnParent(field, record);
+        },
+        isAttributeEnabled: function (record, attributeName) {
+            return Ext.isDefined(record.getField(attributeName));
+        },
+        isRecordParent: function (record) {
+            return Rally.ui.detail.DetailHelper.isAttributeEnabled(record, 'Children') ?
+                !!record.getCollection('Children').getTotalCount() : false;
+        },
+        getController: function() {
+            return this.controller;
+        },
+        setController: function(controller) {
+            this.controller = controller;
+        },
+        _isPlanEstimateFieldOnParent: function(field, record) {
+            return field.name === "PlanEstimate" && Rally.data.util.Record.isParent(record);
+        }
+    });
+})();
+
+/*
+*FieldSetContainer
+*
+**/
+
+(function(){
+    var Ext = window.Ext4 || window.Ext;
+
+    /**
+     * @private
+     */
+    Ext.define('Rally.ui.detail.FieldsetContainer', {
+        extend: 'Rally.ui.detail.FieldContainer',
+        alias: 'widget.rallydetailfieldsetcontaineredpcomplete',
+        labelCls: "fieldsetContainerLabel",
+
+        config: {
+            showLabel: true
+        },
+
+        autoEl: 'fieldset',
+        
+        constructor: function(config) {
+            this.initConfig(config);
+            this.callParent(arguments);
+        },
+
+        initComponent: function(){
+            this.callParent(arguments);
+            if(this.getShowLabel()){
+                this.addCls('hasLabel');
+            }
+        },
+
+        beforeDraw: function(){
+            if(this.getShowLabel()){
+                this.add({
+                    xtype: 'component',
+                    autoEl: 'legend',
+                    cls: this.labelCls,
+                    html: this.displayName || this.getField().displayName
+                });
+            }
+        }
+    });
+}());
+
+
+(function(){
+    var Ext = window.Ext4 || window.Ext;
+
+    /**
+     * A panel configured to use table layout, so that we can show columns that are increased/decreased
+     * based on available width when the parent container is resized.
+     *
+     * @private
+     */
+    Ext.define('Rally.ui.detail.ResizableColumnTable', {
+        extend: 'Ext.panel.Panel',
+        alias: 'widget.rallydetailresizablecolumntable',
+
+        layout: {
+            type: 'table',
+            columns: 1
+        },
+
+        config: {
+            /**
+             * @cfg {Boolean}
+             * If true, configures the panel to use table layout and sets the columns to be dynamically
+             * determined based on the columnWidth config.
+             */
+            showInColumns: true,
+
+            /**
+             * @cfg {Number}
+             * The default size of each column. When the panel is drawn/redrawn, it will calculate how many columns can
+             * fit in a row based on this width.
+             */
+            columnWidth: 300,
+
+            /**
+             * @cfg {Function}
+             * Optional function to calculate the container width. Used to calculate the number of columns in the table.
+             */
+            containerWidthFn: undefined
+        },
+
+        constructor: function(config){
+            this.initConfig(config);
+            this.callParent(arguments);
+        },
+
+        beforeLayout: function(){
+            if(this.getShowInColumns()){
+                this.layout.columns = this._numberOfColumns();
+            }
+            this.callParent(arguments);
+        },
+
+        _numberOfColumns: function () {
+            return Math.floor(this._containerWidth() / this.getColumnWidth()) || 1;
+        },
+        _containerWidth: function () {
+            if (this.getContainerWidthFn()) {
+                return this.getContainerWidthFn().call();
+            } else {
+                return this.getWidth();
+            }
+        }
+    });
+})();
+/**
+ * A link that pops up a version dialog box
+ */
+
+Ext.define('Rally.technicalservices.InfoLink',{
+    extend: 'Ext.Component',
+    alias: 'widget.tsinfolink',
+    
+    /**
+     * @cfg {String} informationHtml
+     * Additional text to be displayed on the popup dialog (for exmaple,
+     * to add a description of the app's use or functionality)
+     */
+    informationHtml: null,
+    
+    /**
+     * 
+     * cfg {String} title
+     * The title for the dialog box
+     */
+     title: "Build Information",
+    
+    renderTpl: "<div id='{id}-infolinkWrap' class='tsinfolink'>i</div>",
+
+    initComponent: function() {
+        this.callParent(arguments);
+       
+    },
+    
+    onRender: function() {
+        this.callParent(arguments);
+        this.mon(this.el,'click',this.onClick,this);
+    },
+    _generateChecksum: function(string){
+        var chk = 0x12345678,
+            i;
+        string = string.replace(/var CHECKSUM = .*;/,"");
+        string = string.replace(/\s/g,"");  //Remove all whitespace from the string.
+        
+        for (i = 0; i < string.length; i++) {
+            chk += (string.charCodeAt(i) * i);
+        }
+    
+        return chk;
+    },
+    _checkChecksum: function(container) {
+        var me = this;
+        Ext.Ajax.request({
+            url: document.URL,
+            params: {
+                id: 1
+            },
+            success: function (response) {
+                text = response.responseText;
+                if ( CHECKSUM ) {
+                    if ( CHECKSUM !== me._generateChecksum(text) ) {
+                        console.log("Checksums don't match!");
+                        if ( me.dialog ) {
+                            me.dialog.add({xtype:'container',html:'Checksums do not match'});
+                        }
+                    }
+                }
+            }
+        });
+    },
+    onClick: function(e) {
+        var me = this;
+        this._checkChecksum(this);
+        
+        var dialog_items = [];
+        
+        if ( this.informationHtml ) {
+            dialog_items.push({
+                xtype:'container',
+                html: this.informationHtml
+            });
+        }
+                
+        dialog_items.push({
+            xtype:'container',
+            html:"This app was created by the Rally Technical Services Team."
+        });
+        
+        if ( APP_BUILD_DATE ) {
+            dialog_items.push({
+                xtype:'container',
+                html:'Build date/time: ' + APP_BUILD_DATE
+            });
+        }
+        
+        if (this.dialog){this.dialog.destroy();}
+        this.dialog = Ext.create('Rally.ui.dialog.Dialog',{
+            defaults: { padding: 5, margin: 5 },
+            closable: true,
+            draggable: true,
+            title: me.title,
+            items: dialog_items
+        });
+        this.dialog.show();
+    }
+});
+
+/*
+ */
+Ext.define('Rally.technicalservices.Logger',{
+    constructor: function(config){
+        Ext.apply(this,config);
+    },
+    log: function(args){
+        var timestamp = "[ " + Ext.util.Format.date(new Date(), "Y-m-d H:i:s.u") + " ]";
+        //var output_args = arguments;
+        //output_args.unshift( [ "[ " + timestamp + " ]" ] );
+        //output_args = Ext.Array.push(output_args,arguments);
+        
+        var output_args = [];
+        output_args = Ext.Array.push(output_args,[timestamp]);
+        output_args = Ext.Array.push(output_args, Ext.Array.slice(arguments,0));
+
+        window.console && console.log.apply(console,output_args);
+    }
+
+});
+
+Ext.define('Rally.technicalservices.FieldBucket', {
+        extend: 'Ext.Container',
+        alias: 'widget.rallytsfieldbucket'
+            
+            
+            
+});
+Ext.define('CustomApp', {
+    extend: 'Rally.app.App',
+    componentCls: 'app',
+    logger: new Rally.technicalservices.Logger(),
+    items: [
+        {xtype:'container',itemId:'artifact_box', layout: 'hbox', padding: 25},
+        {xtype:'container',itemId:'add_scenario_box', layout: 'vbox', flex: 1, padding: 25},
+        {xtype:'container',itemId:'scenario_box', flex: 1},
+        {xtype:'tsinfolink'}
+    ],
+
+    /*
+     * collection store for the scenarios on the test set object
+     */
+    scenario_container: null,
+    /*
+     * selected artifact record
+     */
+    scenario_artifact: null,
+    
+    launch: function() {
+        this._buildArtifactBox();
+        this._buildAddScenarioBox();
+
+     },
+     _chooseArtifact: function(){
+         this.logger.log('_chooseArtifact');
+         var chooser = Ext.create('Rally.ui.dialog.SolrArtifactChooserDialog',{
+             artifactTypes: ['userstory', 'portfolioitem/feature'],
+             modal: true,
+             title: 'Choose Artifact',
+             listeners: {
+                 scope: this,
+                 artifactChosen: this._artifactSelected
+             }
+         });
+         chooser.show();
+     },
+     _artifactSelected: function(acd, rec){
+         this.logger.log('_artifactSelected', acd, rec);
+         var model = rec.get('_type');
+         this._getArtifact(model,rec.get('ObjectID'));
+         this._refreshScenarios(rec);
+     },
+     _getArtifact:function(model_type,obj_id){
+         this.logger.log('_getArtifact');
+         Rally.data.WsapiModelFactory.getModel({
+             type: model_type,
+             scope: this, 
+             success: function(model) {
+                 model.load(obj_id,{
+                     scope: this,
+                     fetch: ['FormattedID','Name','Description'],
+                     callback: this._updateArtifact
+                 });
+             }
+         });
+     },
+     _updateArtifact: function(artifact, operation){
+         this.logger.log('_updateArtifact', artifact, operation);
+         this.down('#artifact_summary_box').update(artifact.getData());
+         this.scenario_artifact = artifact; 
+     },
+     _refreshScenarios: function(artifact){
+         this.scenario_container = null; 
+         this.down('#scenario_box').removeAll();
+         this._fetchScenarios(artifact);
+     },
+     
+     _fetchScenarios: function(artifact){
+         this.logger.log('_fetchScenarios');
+         this.scenario_artifact = artifact;
+         
+         //Load the scenario (collection) store from the scenario container
+         var formatted_id = artifact.get('FormattedID');
+         this._fetchScenarioContainer(formatted_id).then({
+             scope: this,
+             success: function(sc){
+                 this.logger.log('ScenarioContainer: ', sc);
+                 this.scenario_container = sc;
+                 var tf_ref = sc.get('_ref');
+                 var sc_store = Ext.create('Rally.data.wsapi.Store', {
+                     model: 'testcase',
+                     filters: [{property: 'TestFolder', value: tf_ref}],
+                     autoLoad: true,
+                     listeners: {
+                         scope: this,
+                         load: this._scenariosLoaded
+                     },
+                     fetch: ['FormttedID', 'Name', 'Description']
+                 });                 
+
+             },
+             failure: function(error){
+                 alert(Ext.String.format('Failed to load scenario container [{0}]',error));
+             }
+         });
+
+     },
+     _scenariosLoaded: function(store, scenarios, successful){
+         this.logger.log('_scenariosLoaded');
+         if (successful){
+             console.log(store, scenarios, successful, this.scenario_container);
+            this._renderScenarios(scenarios);
+         } else {
+             alert (Ext.String.format('Failed to load scenarios: []'));
+         }
+     },
+     _renderScenarios: function(scenarios){
+         this.logger.log('_renderScenarios', scenarios)
+         if (scenarios.length == 0){
+             this.down('#scenario_box').removeAll();
+             return;
+         }
+         
+         Ext.each(scenarios, function(scenario){
+             var me = this;
+             var name_id = 'name-' + scenario.get('FormattedID');
+             var description_id = 'description-' + scenario.get('FormattedID');
+             var edit_id = 'edit-' + scenario.get('FormattedID');
+             var container_id = 'container-' + scenario.get('FormattedID');
+             
+             var scenario_detail = this.down('#scenario_box').add(
+                {
+                    xtype: 'container',
+                    layout: 'vbox',
+                    itemId: container_id,
+                    padding: 25,
+                        items: [{
+                            xtype: 'rallytextfield',
+                            fieldLabel: 'Name',
+                            labelAlign: 'right',
+                            disabled: true,
+                            width: 800,
+                            itemId: name_id,
+                            value: scenario.get('Name')
+                        },{
+                            xtype     : 'textareafield',
+                            grow      : true,
+                            itemId    : description_id,
+                            labelAlign: 'right',
+                            disabled: true,
+                            width: 800,
+                            value      : scenario.get('Description'),
+                            fieldLabel: 'Description'
+                        },{
+                            xtype: 'container',
+                            layout: 'hbox',
+                            items: [{
+                                scope: me,
+                                xtype: 'rallybutton',
+                                itemId: edit_id,
+                                margin: '0 0 0 700',
+                                text: 'Edit',
+                                handler: function(){ me._editScenario(scenario);}
+                            },{
+                                scope: me,
+                                xtype: 'rallybutton',
+                                text: 'Delete',
+                                margin: '0 0 0 0',
+                                handler: function(){me._deleteScenario(scenario);}
+                            }]
+                        }]
+                    });
+         },this);
+         
+     },
+     _editScenario: function(scenario){
+         this.logger.log('_editScenario');
+         var fid = scenario.get('FormattedID');
+         var name_ctl = this.down('#name-' + fid);
+         var description_ctl = this.down('#description-' + fid);
+         var button = this.down('#edit-' + fid);
+         
+         if (button.getText() == 'Edit'){
+             button.setText('Save')
+             name_ctl.setDisabled(false);
+             description_ctl.setDisabled(false);
+         } else {
+             
+             var name = name_ctl.value;
+             var description = description_ctl.value;
+             
+             scenario.set('Name',name);
+             scenario.set('Description',description);
+             scenario.save();
+             
+             button.setText('Edit')
+             name_ctl.setDisabled(true);
+             description_ctl.setDisabled(true);
+         }
+     },
+     _deleteScenario: function(scenario){
+         console.log('_deleteScenario');
+         scenario.destroy();
+         var fid = scenario.get('FormattedID');
+         var cont_ctl = this.down('#container-' + fid);
+         cont_ctl.destroy();
+     },
+     _addScenario: function(artifact, scenario_name, scenario_desc){
+         this.logger.log('_addScenario', artifact);
+         
+         if (!artifact){
+             return;
+         }
+         
+         ts_name = artifact.get('FormattedID');
+         this._createTestCase(scenario_name,scenario_desc).then({
+             scope: this,
+             success: function(tc){
+                this._renderScenarios([record]);
+             },
+             failure: function(error){
+                 alert(Ext.String.format("Add Scenario failed [{0}]",error));
+             }
+         });
+     },
+     _scenarioSaved: function(batch, options){
+         this.logger.log('_scenarioSaved', batch, options);
+     },
+     _createTestCase: function(tc_name, tc_desc){
+         this.logger.log('_createTestCase', tc_name, tc_desc);
+         var deferred = Ext.create('Deft.Deferred');
+         
+         var tc_data = {
+                 'Name': tc_name,
+                 'Description': tc_desc,
+                 'Type': this._getTestCaseType(),
+                 'TestFolder':this.scenario_container.get('_ref')
+         }
+         this._createRecord('TestCase', tc_data).then({
+             scope:this,
+             success: function(record){
+                 deferred.resolve(record);
+             },
+             failure: function(error){
+                deferred.reject(error);
+             }
+         });
+         return deferred.promise;
+     },
+
+     _fetchScenarioContainer: function(name){
+         this.logger.log('_fetchScenarioContainer', name);
+         var deferred = Ext.create('Deft.Deferred');
+         
+         var ts_filter = Ext.create('Rally.data.wsapi.Filter', {
+             property: 'Name',
+             operator: '=',
+             value: name
+        });
+         
+        this._fetchRecord('TestFolder',ts_filter).then({
+             scope: this,
+             success: function(record){
+                 if (record == undefined){
+                     this._createRecord('TestFolder',{'Name': name}).then({
+                         scope:this,
+                         success: function(ts){
+                             deferred.resolve(ts);
+                         },
+                         failure: function(error){
+                             deferred.reject (error);
+                         }
+                     });
+                 } else {
+                     deferred.resolve(record);
+                 }
+             },
+             failure: function(error){
+                 deferred.reject(error);
+             }
+         });         
+        return deferred.promise; 
+     },
+     /*
+      * Build UI:  
+      *      _buildArtifactBox
+      *      _buildAddScenarioBox
+      */     
+     _buildArtifactBox: function(){
+         this.down('#artifact_box').add({
+             xtype: 'rallybutton',
+             text: 'Choose Story...',
+             scope: this,
+             margin: 10,
+             handler: this._chooseArtifact
+         });
+         this.down('#artifact_box').add({
+             xtype: 'container',
+             itemId: 'artifact_summary_box',
+             cls: 'title',
+             tpl:'<h3>{FormattedID}:  {Name}</h3><p>{Description}</p>'
+         });
+     },
+
+     _buildAddScenarioBox: function(){
+
+         this.down('#add_scenario_box').add({
+             xtype: 'rallytextfield',
+             itemId: 'scenario_name',
+             fieldLabel: 'Name',
+             width: 800,
+             labelAlign: 'right'
+         });
+
+         this.down('#add_scenario_box').add({
+             xtype: 'textareafield',
+             itemId: 'scenario_description',
+             fieldLabel: 'Description',
+             grow: true,
+             width: 800,
+             labelAlign: 'right'
+         });
+
+         this.down('#add_scenario_box').add({
+             scope: this,
+             xtype: 'rallybutton',
+             text: '+Add Scenario',
+             margin: '0 0 0 700',
+
+             handler: function() {
+                 var scenario_name = this.down('#scenario_name').value;
+                 var scenario_desc = this.down('#scenario_description').value;
+                 this.down('#scenario_name').setValue('');
+                 this.down('#scenario_description').setValue('');
+                 this._addScenario(this.scenario_artifact, scenario_name, scenario_desc);
+            }
+         });
+        
+    },
+     /*
+      * 
+      * Generic Utilities:  _fetchRecord, _createRecord
+      * 
+      */
+     _fetchRecord: function(model_type, filters){
+         this.logger.log('_fetchRecord', model_type, filters);
+         var deferred = Ext.create('Deft.Deferred');
+         
+         Rally.data.ModelFactory.getModel({
+             type: model_type,
+             context: {project: null},
+             success: function(model) {
+                 model.find({
+                     filters: filters, 
+                     callback: function(record, success){
+                         if (success) {
+                             deferred.resolve(record);
+                         } else {
+                             deferred.reject(Ext.String.format('Find model failed for {0}', model_type));
+                         }
+                     }
+                });
+              }, 
+              failure: function(error){
+                  deferred.reject(Ext.String.format('Create model failed for {0}.  More information: {1}', model_type, error));
+              }
+         });
+         return deferred.promise;
+     },
+
+     _createRecord: function(model_type, data){
+         this.logger.log('_createRecord', model_type, data);
+         var deferred = Ext.create('Deft.Deferred');
+         
+         Rally.data.ModelFactory.getModel({
+             type: model_type,
+             context: {project: null},
+             success: function(model) {
+                 record = Ext.create(model, data);
+                 record.save ({
+                     callback: function(result, operation){
+                         if (operation.wasSuccessful()){
+                             deferred.resolve(result);
+                         } else {
+                             deferred.reject(operation.getError().errors.join(','));
+                         }
+                     }
+                 });
+              }, 
+              failure: function(error){
+                  deferred.reject(Ext.String.format('Create model failed for {0}.  More information: {1}', model_type, error));
+              }
+         });
+         return deferred.promise;
+     },
+     /*
+      * 
+      * Gets and Returns the test set record associated with this scenario
+      * 
+      */     
+          _setScenarioContainer: function(record){
+              if (record == undefined) {
+                  this.logger.log(Ext.String.format('TestSet is empty.'));
+              }
+              this.scenarios_test_set = record;
+          },
+
+          _getScenarioContainer: function(){
+              return this.scenarios_test_set;
+          },
+          _getTestCaseType: function(){
+              return 'Usability';  //'Scenario';
+          },
+});
+Ext.define('CustomApp-Feature', {
+    extend: 'Rally.app.App',
+    componentCls: 'app',
+    logger: new Rally.technicalservices.Logger(),
+    items: [
+        {xtype:'container',itemId:'artifact_box', layout: 'hbox', padding: 25},
+        {xtype:'container',itemId:'scenario_box', layout: 'vbox', padding: 25},
+        {xtype:'tsinfolink'}
+    ],
+    portfolio_item_name: 'Feature', //TODO get low level pi name
+    launch: function() {
+        this._buildArtifactBox();
+
+     },
+     _chooseArtifact: function(){
+         var title = Ext.String.format('Choose {0}',this.portfolio_item_name);
+         var artifact_name = Ext.String.format('portfolioitem/{0}',this.portfolio_item_name.toLowerCase());
+         
+         this.logger.log('_chooseArtifact');
+         var chooser = Ext.create('Rally.ui.dialog.SolrArtifactChooserDialog',{
+             artifactTypes: [artifact_name],
+             modal: true,
+             title: title,
+             listeners: {
+                 scope: this,
+                 artifactChosen: this._buildFeatureFile
+             }
+         });
+         chooser.show();
+     },
+     _buildArtifactBox: function(){
+         var button_text = Ext.String.format('Choose {0}...',this.portfolio_item_name);
+         this.down('#artifact_box').add({
+             xtype: 'rallybutton',
+             text: button_text,  //TODO get actual low level pi name
+             scope: this,
+             handler: this._chooseArtifact
+         });
+//         this.down('#artifact_box').add({
+//             xtype: 'container',
+//             itemId: 'artifact_summary_box',
+//             cls: 'title',
+//             tpl:'<tpl>{FormattedID}:  {Name}</tpl>'
+//         });
+     },
+     _buildFeatureFile: function(blah, artifact){
+         this.logger.log('_getArtifactFileTreeStore');
+         var deferred = Ext.create('Deft.Deferred');
+         
+         var sc_ids = [];
+         this._getContainerRecords(artifact.get('_ref')).then({
+             scope: this,
+             success: function(container_records){
+                 console.log('getcontainerrecords success', container_records);
+                 this._getScenarioRecords(container_records).then({
+                     scope: this,
+                     success: function(scenario_records){
+                         this._buildTreeStore(artifact, container_records, scenario_records);
+                       
+                     }
+                 });
+             }
+         });
+     },
+     _getContainerRecords: function(artifact_ref){
+         this.logger.log('_getContainerRecords');
+         var deferred = Ext.create('Deft.Deferred');
+         
+         var store = Ext.create('Rally.data.wsapi.Store', {
+             model: 'userstory',
+             filters: [{property: 'PortfolioItem', value: artifact_ref}],
+             autoLoad: true,
+             listeners: {
+                 load: function(store, data, success) {
+                     deferred.resolve(store.getRecords());
+                 }
+             },
+             fetch: ['Name', 'FormattedID', 'Description']
+         });
+         return deferred.promise; 
+     },
+     _getScenarioRecords: function(container_records){
+         this.logger.log('_getScenarioRecords');
+         var deferred = Ext.create('Deft.Deferred');
+         
+         var filter = null;
+         Ext.each(container_records, function(cr){
+             var f  = Ext.create('Rally.data.wsapi.Filter', {
+                 property: 'TestFolder.Name',
+                 operator: '=',
+                 value: cr.get('FormattedID')
+            });
+            
+            if (filter) {
+                filter = filter.or(f);
+            } else {
+                filter = f;
+            }
+             
+         },this);
+         
+         this.logger.log('_getScenarioRecords filter=', filter.toString());
+         var store = Ext.create('Rally.data.wsapi.Store', {
+             model: 'testcase',
+             filters: [filter],
+             autoLoad: true,
+             listeners: {
+                 load: function(store, data, success) {
+                     console.log('testcases', store.getRecords());
+                     deferred.resolve(store.getRecords());
+                 }
+             },
+             fetch: ['Name', 'FormattedID', 'Description', 'TestFolder','Name']
+         });
+         return deferred.promise; 
+     },
+     _buildTreeStore: function(artifact, containers, scenarios){
+         this.logger.log('_buildTreeStore');
+         
+         var tree_data = {};
+         tree_data['FormattedID'] = artifact.get('FormattedID');
+         tree_data['Name'] = artifact.get('Name');
+         tree_data['Description'] = artifact.get('Description');
+         tree_data['children'] = [];
+         Ext.each(containers, function(container){
+             var tree_data_child = {};
+             tree_data_child['FormattedID'] = container.get('FormattedID');
+             tree_data_child['Name'] = container.get('Name');
+             tree_data_child['Description'] = container.get('Description');
+             tree_data_child['children'] = [];
+             Ext.each(scenarios, function(scenario){
+                 var scenario_parent = scenario.get('TestFolder').Name;
+                 if (scenario_parent == container.get('FormattedID')){
+                     var tree_data_grandchild = {};
+                     tree_data_grandchild['FormattedID'] = scenario.get('FormattedID');
+                     tree_data_grandchild['Name'] = scenario.get('Name');
+                     tree_data_grandchild['Description'] = scenario.get('Description');
+                }
+                 tree_data_child['children'].push(tree_data_grandchild);
+             });
+             tree_data['children'].push(tree_data_child);
+            }, this);
+         
+         this._renderFeatureFile(tree_data);
+     },
+     _renderFeatureFile: function(data){
+         this.logger.log('_renderFeatureFile');
+         
+         var feature_tpl = '<p>{FormattedID}</p><p>Feature: {Name}</p>';
+         var story_tpl = '<p>{FormattedID}</p><p>{Name}</p><p>{Description}</p>';
+         var scenario_tpl = '<p>{FormattedID}</p><p>Scenario: {Name}</p><p>{Description}</p>';
+         
+         this.down('#scenario_box').add({
+             xtype: 'component',
+             tpl: feature_tpl,
+             data: data,
+             cls: 'ts-feature'
+         }); 
+         
+         Ext.each(data['children'], function(child){
+             this.down('#scenario_box').add({
+                 xtype: 'component',
+                 tpl: story_tpl,
+                 data: child,
+                 cls: 'ts-story'
+             });
+             Ext.each(child['children'], function(ch){
+                 this.down('#scenario_box').add({
+                     xtype: 'component',
+                     tpl: scenario_tpl,
+                     data: ch,
+                     cls: 'ts-scenario'
+                 });
+             }, this);
+             
+         },this);
+             
+     }
+
+});
+            
+               Rally.launchApp('CustomApp', {
+                   name: 'BDD Scenario Generator'
+               });
+        });
+    </script>
+    
+    <style type="text/css">
+
+.app {
+}
+.tsinfolink {
+    position:absolute;
+    right:0px;
+    width: 14px;
+    height: 14px;
+    border-radius: 7px;
+    text-align: center;
+    color: white;
+    background: #C0C0C0;
+    border-style: solid;
+    border-width: 1px;
+    margin-top: 25px;
+    margin-right: 5px;
+    cursor: pointer;
+}
+.tschevron {
+	background: transparent url(https://demo-west.rallydev.com/slm/js-lib/rui/builds/rui/resources/css/images/double-chevron-left.png) no-repeat scroll center left;
+}
+.ts_add_scenario_box {
+	margin: 10 10 10 10;
+	padding: 10 10 10 10;
+}
+.ts-scenario {
+    vertical-align: 'top';
+    width: 800;
+	
+}
+    </style>
+
+</head>
+<body></body>
+</html>

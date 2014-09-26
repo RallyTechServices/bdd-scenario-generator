@@ -15,3 +15,15 @@
     margin-right: 5px;
     cursor: pointer;
 }
+.tschevron {
+	background: transparent url(https://demo-west.rallydev.com/slm/js-lib/rui/builds/rui/resources/css/images/double-chevron-left.png) no-repeat scroll center left;
+}
+.ts_add_scenario_box {
+	margin: 10 10 10 10;
+	padding: 10 10 10 10;
+}
+.ts-scenario {
+    vertical-align: 'top';
+    width: 800;
+	
+}

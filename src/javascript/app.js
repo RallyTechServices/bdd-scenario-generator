@@ -21,7 +21,7 @@ Ext.define('CustomApp', {
     
     launch: function() {
         this._buildArtifactBox();
-        this._buildAddScenarioBox();
+        this._buildAddScenarioBox();  //move into _artifactSelected
 
      },
      _chooseArtifact: function(){
@@ -29,6 +29,9 @@ Ext.define('CustomApp', {
          var chooser = Ext.create('Rally.ui.dialog.SolrArtifactChooserDialog',{
              artifactTypes: ['userstory', 'portfolioitem/feature'],
              modal: true,
+             storeConfig: {
+                 fetch: ['FormattedID','Name','PortfolioItem','Project']
+             },
              title: 'Choose Artifact',
              listeners: {
                  scope: this,
@@ -40,39 +43,30 @@ Ext.define('CustomApp', {
      _artifactSelected: function(acd, rec){
          this.logger.log('_artifactSelected', acd, rec);
          var model = rec.get('_type');
-         this._getArtifact(model,rec.get('ObjectID'));
+         this._updateArtifactDisplay(model,rec.get('ObjectID'));
          this._refreshScenarios(rec);
          this.down('#preview-file').setDisabled(false);
      },
-     _getArtifact:function(model_type,obj_id){
-         this.logger.log('_getArtifact');
-         Rally.data.WsapiModelFactory.getModel({
-             type: model_type,
-             scope: this, 
-             success: function(model) {
-                 model.load(obj_id,{
-                     scope: this,
-                     fetch: ['FormattedID','Name','Description','PortfolioItem','Project'],
-                     callback: this._updateArtifact
-                 });
+     _updateArtifactDisplay:function(model_type,obj_id){
+         this.logger.log('_updateArtifactDisplay', model_type, obj_id);
+         
+         this._fetchRecord(model_type, [{property: 'ObjectID', value: obj_id}]).then({
+             scope: this,
+             success: function(artifact){
+                 this.down('#artifact_summary_box').update(artifact.getData());
+             }, 
+             failure: function(error){
+                 alert('Error fetching artifact details: ' + error);
              }
          });
      },
-     _updateArtifact: function(artifact, operation){
-         this.logger.log('_updateArtifact', artifact, operation);
-         this.down('#artifact_summary_box').update(artifact.getData());
-         this.scenario_artifact = artifact; 
-     },
      _refreshScenarios: function(artifact){
+         this.logger.log('_refreshScenarios');
+
          this.scenario_container = null; 
          this.down('#scenario_box').removeAll();
-         this._fetchScenarios(artifact);
-     },
-     
-     _fetchScenarios: function(artifact){
-         this.logger.log('_fetchScenarios');
          this.scenario_artifact = artifact;
-         
+
          //Load the scenario (collection) store from the scenario container
          var formatted_id = artifact.get('FormattedID');
          this._fetchScenarioContainer(formatted_id).then({
@@ -97,12 +91,11 @@ Ext.define('CustomApp', {
                  alert(Ext.String.format('Failed to load scenario container [{0}]',error));
              }
          });
-
      },
+
      _scenariosLoaded: function(store, scenarios, successful){
          this.logger.log('_scenariosLoaded');
          if (successful){
-             console.log(store, scenarios, successful, this.scenario_container);
             this._renderScenarios(scenarios);
          } else {
              alert (Ext.String.format('Failed to load scenarios: []'));
@@ -193,7 +186,7 @@ Ext.define('CustomApp', {
          }
      },
      _deleteScenario: function(scenario){
-         console.log('_deleteScenario');
+         this.logger.log('_deleteScenario');
          scenario.destroy();
          var fid = scenario.get('FormattedID');
          var cont_ctl = this.down('#container-' + fid);
@@ -410,7 +403,6 @@ Ext.define('CustomApp', {
                  model.find({
                      filters: filters, 
                      callback: function(record, success){
-                         console.log(success, filters);
                          if (success) {
                              deferred.resolve(record);
                          } else {

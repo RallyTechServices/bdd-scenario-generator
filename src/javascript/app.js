@@ -10,6 +10,7 @@ Ext.define('CustomApp', {
         {xtype:'tsinfolink'}
     ],
     top_level_type: 'portfolioitem/feature',
+    portfolio_item_ancestor_field: 'Feature',
     /*
      * collection store for the scenarios on the test set object
      */
@@ -19,18 +20,19 @@ Ext.define('CustomApp', {
      */
     scenario_artifact: null,
     
+    scenario_test_case_type: 'Usability',
+    
     launch: function() {
         this._buildArtifactBox();
-        this._buildAddScenarioBox();  //move into _artifactSelected
-
      },
+
      _chooseArtifact: function(){
          this.logger.log('_chooseArtifact');
          var chooser = Ext.create('Rally.ui.dialog.SolrArtifactChooserDialog',{
-             artifactTypes: ['userstory', 'portfolioitem/feature'],
+             artifactTypes: ['userstory', this.top_level_type],
              modal: true,
              storeConfig: {
-                 fetch: ['FormattedID','Name','PortfolioItem','Project']
+                 fetch: ['FormattedID','Name',this.portfolio_item_ancestor_field,'Project']
              },
              title: 'Choose Artifact',
              listeners: {
@@ -40,13 +42,16 @@ Ext.define('CustomApp', {
          });
          chooser.show();
      },
+     
      _artifactSelected: function(acd, rec){
          this.logger.log('_artifactSelected', acd, rec);
+         this._buildAddScenarioBox();
          var model = rec.get('_type');
          this._updateArtifactDisplay(model,rec.get('ObjectID'));
          this._refreshScenarios(rec);
          this.down('#preview-file').setDisabled(false);
      },
+     
      _updateArtifactDisplay:function(model_type,obj_id){
          this.logger.log('_updateArtifactDisplay', model_type, obj_id);
          
@@ -60,6 +65,7 @@ Ext.define('CustomApp', {
              }
          });
      },
+     
      _refreshScenarios: function(artifact){
          this.logger.log('_refreshScenarios');
 
@@ -200,6 +206,7 @@ Ext.define('CustomApp', {
          }
          
          ts_name = artifact.get('FormattedID');
+         
          this._createTestCase(scenario_name,scenario_desc).then({
              scope: this,
              success: function(tc){
@@ -221,8 +228,15 @@ Ext.define('CustomApp', {
                  'Name': tc_name,
                  'Description': tc_desc,
                  'Type': this._getTestCaseType(),
-                 'TestFolder':this.scenario_container.get('_ref')
+                 'TestFolder':this.scenario_container.get('_ref'),
+                 'Project': this.scenario_container.get('Project')
          }
+         
+         //Link the test case to story if it is a story.  
+         if (this.scenario_artifact.get('_type').toLowerCase() == 'hierarchicalrequirement'){
+            tc_data['WorkProduct'] =  this.scenario_artifact.get('_ref')
+         }
+         
          this._createRecord('TestCase', tc_data).then({
              scope:this,
              success: function(record){
@@ -239,17 +253,24 @@ Ext.define('CustomApp', {
          this.logger.log('_fetchScenarioContainer', name);
          var deferred = Ext.create('Deft.Deferred');
          
+         var project = this.scenario_artifact.get('Project');
+         
          var ts_filter = Ext.create('Rally.data.wsapi.Filter', {
              property: 'Name',
              operator: '=',
              value: name
         });
+        ts_filter =  ts_filter.and(Ext.create('Rally.data.wsapi.Filter', {
+             property: 'Project',
+             operator: '=',
+             value: project['_ref']
+         }));
          
         this._fetchRecord('TestFolder',ts_filter).then({
              scope: this,
              success: function(record){
                  if (record == undefined){
-                     this._createRecord('TestFolder',{'Name': name}).then({
+                     this._createRecord('TestFolder',{'Name': name, 'Project': project['_ref']}).then({
                          scope:this,
                          success: function(ts){
                              deferred.resolve(ts);
@@ -274,6 +295,8 @@ Ext.define('CustomApp', {
       *      _buildAddScenarioBox
       */     
      _buildArtifactBox: function(){
+         this.down('#artifact_box').removeAll();
+         
          this.down('#artifact_box').add({
              xtype: 'rallybutton',
              text: 'Choose Artifact...',
@@ -301,7 +324,8 @@ Ext.define('CustomApp', {
      },
 
      _buildAddScenarioBox: function(){
-
+         this.down('#add_scenario_box').removeAll(); 
+         
          this.down('#add_scenario_box').add({
              xtype: 'rallytextfield',
              itemId: 'scenario_name',
@@ -361,7 +385,7 @@ Ext.define('CustomApp', {
         if (current_artifact.get('_type') == this.top_level_type){
             deferred.resolve(current_artifact);
         } else {
-            var pi = current_artifact.get('PortfolioItem');
+            var pi = current_artifact.get(this.portfolio_item_ancestor_field);
             if (pi && pi['FormattedID']) {
                 var filter = [{property: 'FormattedID', value: pi['FormattedID']}]
                 this._fetchRecord(this.top_level_type, filter).then({
@@ -444,7 +468,7 @@ Ext.define('CustomApp', {
          return deferred.promise;
      },
           _getTestCaseType: function(){
-              return 'Usability';
+              return this.scenario_test_case_type;
           },
 
           _buildFeatureFile: function(artifact){
@@ -479,7 +503,7 @@ Ext.define('CustomApp', {
               
               var store = Ext.create('Rally.data.wsapi.Store', {
                   model: 'userstory',
-                  filters: [{property: 'PortfolioItem', value: artifact_ref}],
+                  filters: [{property: this.portfolio_item_ancestor_field, value: artifact_ref}],
                   autoLoad: true,
                   listeners: {
                       load: function(store, data, success) {

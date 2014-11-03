@@ -563,12 +563,15 @@ Ext.define('CustomApp', {
               file_contents += this._buildScenarioFileContentSnippet(artifact.get('FormattedID'),scenarios);
               
               Ext.each(containers, function(child){
-                file_contents += Ext.String.format('{0}\n',child.get('Name'));
-                if (child.get('Description')){
-                    file_contents += Ext.String.format('{0}\n',child.get('Description'));
+                var scenario_snippet = this._buildScenarioFileContentSnippet(child.get('FormattedID'),scenarios);
+                if (scenario_snippet.length > 0 ){
+                    file_contents += Ext.String.format('{0}\n',child.get('Name'));
+                    if (child.get('Description')){
+                        file_contents += Ext.String.format('{0}\n',child.get('Description'));
+                    }
+                    file_contents += '\n';
+                    file_contents += scenario_snippet;
                 }
-                file_contents += '\n';
-                file_contents += this._buildScenarioFileContentSnippet(child.get('FormattedID'),scenarios);
               }, this);
               return file_contents; 
           },

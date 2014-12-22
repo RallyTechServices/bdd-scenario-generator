@@ -132,6 +132,7 @@ Ext.define('CustomApp', {
                             fieldLabel: 'Scenario',
                             labelAlign: 'right',
                             disabled: true,
+                            disabledCls: 'ts-disabled',
                             width: 800,
                             itemId: name_id,
                             value: scenario.get('Name')
@@ -141,6 +142,7 @@ Ext.define('CustomApp', {
                             itemId    : description_id,
                             labelAlign: 'right',
                             disabled: true,
+                            disabledCls: 'ts-disabled',
                             width: 800,
                             value      : scenario.get('Description'),
                             fieldLabel: 'Description'
@@ -151,7 +153,7 @@ Ext.define('CustomApp', {
                                 scope: me,
                                 xtype: 'rallybutton',
                                 itemId: edit_id,
-                                margin: '0 0 0 700',
+                                margin: '0 10 0 700',
                                 text: 'Edit',
                                 handler: function(){ me._editScenario(scenario);}
                             },{
@@ -559,17 +561,17 @@ Ext.define('CustomApp', {
           _buildFeatureFileContents: function(artifact, containers, scenarios){
               this.logger.log('_getFeatureFileContents', artifact, containers, scenarios);
               
-              var file_contents = Ext.String.format('Feature: {0}\n\n', artifact.get('Name'));
+              var file_contents = Ext.String.format('Feature: {0}\n\n{1}\n\n', artifact.get('Name'),artifact.get('Description'));
               file_contents += this._buildScenarioFileContentSnippet(artifact.get('FormattedID'),scenarios);
               
               Ext.each(containers, function(child){
                 var scenario_snippet = this._buildScenarioFileContentSnippet(child.get('FormattedID'),scenarios);
                 if (scenario_snippet.length > 0 ){
-                    file_contents += Ext.String.format('{0}\n',child.get('Name'));
-                    if (child.get('Description')){
-                        file_contents += Ext.String.format('{0}\n',child.get('Description'));
-                    }
-                    file_contents += '\n';
+//                    file_contents += Ext.String.format('{0}\n\n',child.get('Name'));
+//                    if (child.get('Description')){
+//                        file_contents += Ext.String.format('{0}\n',child.get('Description'));
+//                    }
+//                    file_contents += '\n';
                     file_contents += scenario_snippet;
                 }
               }, this);
@@ -580,7 +582,7 @@ Ext.define('CustomApp', {
               Ext.each(scenarios, function(scenario){
                   var scenario_parent = scenario.get('TestFolder').Name;
                   if (scenario_parent == formatted_id){
-                      snippet = snippet + Ext.String.format('Scenario: {0}\n{1}\n\n',scenario.get('Name'),scenario.get('Description'));
+                      snippet = snippet + Ext.String.format('Scenario {0}\n\n{1}\n\n',scenario.get('Name'),scenario.get('Description'));
                  }
               }, this);
               return snippet;  

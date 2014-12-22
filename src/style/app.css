@@ -25,5 +25,9 @@
 .ts-scenario {
     vertical-align: 'top';
     width: 800;
-	
+}
+.ts-disabled
+{
+	color: #FF0000;
+	margin: 10
 }
